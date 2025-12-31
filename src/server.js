@@ -25,6 +25,7 @@ const adminRoutes = require('./routes/admin.routes');
 const categoriesRoutes = require('./routes/categories.routes');
 const churchRoutes = require('./routes/church.routes');
 const userActivityRoutes = require('./routes/user-activity.routes');
+const galleryRoutes = require('./routes/gallery.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -110,6 +111,7 @@ app.use(`/api/${API_VERSION}/playlists`, playlistRoutes);
 app.use(`/api/${API_VERSION}/activity`, activityRoutes);
 app.use(`/api/${API_VERSION}/user-activity`, userActivityRoutes);
 app.use(`/api/${API_VERSION}/admin`, adminRoutes);
+app.use(`/api/${API_VERSION}/gallery`, galleryRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

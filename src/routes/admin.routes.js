@@ -1,9 +1,27 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const adminController = require('../controllers/admin.controller');
 const { adminAuth } = require('../middleware/auth.middleware');
 const { requireAdmin, requirePermission } = require('../middleware/admin.middleware');
 const { createSongValidation, songIdValidation, createPlaylistValidation, playlistIdValidation } = require('../middleware/validation.middleware');
+
+// Configure multer for image uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB per file
+    files: 5 // Maximum 5 files
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files allowed'));
+    }
+  }
+});
 
 // ============ SONG MANAGEMENT ============
 
@@ -69,5 +87,27 @@ router.get('/statistics', adminAuth, requireAdmin, adminController.getStatistics
 // @desc    Get all user activities
 // @access  Admin only
 router.get('/activities', adminAuth, requireAdmin, adminController.getAllActivities);
+
+// ============ IMAGE MANAGEMENT ============
+
+// @route   POST /api/v1/admin/images
+// @desc    Upload multiple images (1-5 at once)
+// @access  Admin only
+router.post('/images', adminAuth, requireAdmin, upload.array('images', 5), adminController.uploadImages);
+
+// @route   GET /api/v1/admin/images
+// @desc    Get all images
+// @access  Admin only
+router.get('/images', adminAuth, requireAdmin, adminController.getAllImages);
+
+// @route   DELETE /api/v1/admin/images/:imageId
+// @desc    Delete single image
+// @access  Admin only
+router.delete('/images/:imageId', adminAuth, requireAdmin, adminController.deleteImage);
+
+// @route   POST /api/v1/admin/images/delete-multiple
+// @desc    Delete multiple images
+// @access  Admin only
+router.post('/images/delete-multiple', adminAuth, requireAdmin, adminController.deleteMultipleImages);
 
 module.exports = router;

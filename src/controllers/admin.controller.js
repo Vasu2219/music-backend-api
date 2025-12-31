@@ -1,5 +1,7 @@
 const { getFirestore } = require('../config/firebase.config');
 const { v4: uuidv4 } = require('uuid');
+const cloudinary = require('cloudinary').v2;
+const streamifier = require('streamifier');
 
 const db = getFirestore();
 
@@ -46,6 +48,45 @@ exports.createSong = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: { songId }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete song
+exports.deleteSong = async (req, res, next) => {
+  try {
+    const { songId } = req.params;
+
+    const songRef = db.collection('songs').doc(songId);
+    const songDoc = await songRef.get();
+
+    if (!songDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Song not found'
+      });
+    }
+
+    // Delete from Firestore
+    await songRef.delete();
+
+    // Remove from user activities
+    const userActivities = await db.collection('user_activity')
+      .where('likedSongs', 'array-contains', songId)
+      .get();
+
+    const batch = db.batch();
+    userActivities.forEach(doc => {
+      const likedSongs = doc.data().likedSongs.filter(id => id !== songId);
+      batch.update(doc.ref, { likedSongs });
+    });
+    await batch.commit();
+
+    res.status(200).json({
+      success: true,
+      message: 'Song deleted successfully'
     });
   } catch (error) {
     next(error);
@@ -375,6 +416,179 @@ exports.getAllActivities = async (req, res, next) => {
       success: true,
       count: activities.length,
       data: activities
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============ IMAGE MANAGEMENT ============
+
+// Upload multiple images (1-5 at once)
+exports.uploadImages = async (req, res, next) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No images uploaded'
+      });
+    }
+
+    if (req.files.length > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 5 images allowed'
+      });
+    }
+
+    const uploadPromises = req.files.map(file => {
+      return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'hermon_gallery',
+            resource_type: 'image',
+            transformation: [
+              { width: 1200, height: 800, crop: 'limit' },
+              { quality: 'auto:good' }
+            ]
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        streamifier.createReadStream(file.buffer).pipe(uploadStream);
+      });
+    });
+
+    const uploadResults = await Promise.all(uploadPromises);
+    const now = new Date().toISOString();
+    const batch = db.batch();
+
+    const imageData = uploadResults.map(result => {
+      const imageId = `img_${uuidv4()}`;
+      const data = {
+        imageId,
+        url: result.secure_url,
+        publicId: result.public_id,
+        width: result.width,
+        height: result.height,
+        format: result.format,
+        uploadedBy: req.user.userId,
+        uploadedAt: now,
+        isActive: true
+      };
+      batch.set(db.collection('gallery_images').doc(imageId), data);
+      return data;
+    });
+
+    await batch.commit();
+
+    res.status(201).json({
+      success: true,
+      message: `${imageData.length} image(s) uploaded successfully`,
+      data: imageData
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get all images
+exports.getAllImages = async (req, res, next) => {
+  try {
+    const imagesSnapshot = await db.collection('gallery_images')
+      .where('isActive', '==', true)
+      .orderBy('uploadedAt', 'desc')
+      .get();
+
+    const images = [];
+    imagesSnapshot.forEach(doc => {
+      images.push(doc.data());
+    });
+
+    res.status(200).json({
+      success: true,
+      count: images.length,
+      data: images
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete image
+exports.deleteImage = async (req, res, next) => {
+  try {
+    const { imageId } = req.params;
+
+    const imageRef = db.collection('gallery_images').doc(imageId);
+    const imageDoc = await imageRef.get();
+
+    if (!imageDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Image not found'
+      });
+    }
+
+    const imageData = imageDoc.data();
+
+    // Delete from Cloudinary
+    if (imageData.publicId) {
+      try {
+        await cloudinary.uploader.destroy(imageData.publicId);
+      } catch (cloudError) {
+        console.error('Cloudinary delete error:', cloudError);
+      }
+    }
+
+    // Delete from Firestore
+    await imageRef.delete();
+
+    res.status(200).json({
+      success: true,
+      message: 'Image deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete multiple images
+exports.deleteMultipleImages = async (req, res, next) => {
+  try {
+    const { imageIds } = req.body;
+
+    if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Image IDs array required'
+      });
+    }
+
+    const deletePromises = imageIds.map(async (imageId) => {
+      const imageRef = db.collection('gallery_images').doc(imageId);
+      const imageDoc = await imageRef.get();
+
+      if (imageDoc.exists) {
+        const imageData = imageDoc.data();
+        if (imageData.publicId) {
+          try {
+            await cloudinary.uploader.destroy(imageData.publicId);
+          } catch (cloudError) {
+            console.error(`Cloudinary delete error for ${imageId}:`, cloudError);
+          }
+        }
+        await imageRef.delete();
+      }
+    });
+
+    await Promise.all(deletePromises);
+
+    res.status(200).json({
+      success: true,
+      message: `${imageIds.length} image(s) deleted successfully`
     });
   } catch (error) {
     next(error);
