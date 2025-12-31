@@ -1,4 +1,5 @@
 const { getFirestore } = require('../config/firebase.config');
+const bcrypt = require('bcryptjs');
 
 /**
  * Initialize admin user in Firestore
@@ -12,11 +13,14 @@ const initializeAdmin = async () => {
     
     // Admin user configuration
     // TODO: Update these credentials with your organization's admin details
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@2025!SecurePass';
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
+    
     const adminData = {
       email: process.env.ADMIN_EMAIL || 'admin@hermonkeerthanalu.com',
       displayName: process.env.ADMIN_NAME || 'Administrator',
       role: 'admin',
-      password: process.env.ADMIN_PASSWORD || 'Admin@2025!SecurePass', // CHANGE THIS!
+      passwordHash: hashedPassword, // Store hashed password
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isActive: true,
@@ -48,6 +52,7 @@ const initializeAdmin = async () => {
       const docId = snapshot.docs[0].id;
       await usersRef.doc(docId).update({
         role: 'admin',
+        passwordHash: hashedPassword, // Update with hashed password
         permissions: adminData.permissions,
         updatedAt: new Date().toISOString()
       });
