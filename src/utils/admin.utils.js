@@ -1,8 +1,8 @@
-const { getFirestore } = require('../config/firebase.config');
+const { getFirestore, getAuth } = require('../config/firebase.config');
 const bcrypt = require('bcryptjs');
 
 /**
- * Initialize admin user in Firestore
+ * Initialize admin user in both Firebase Authentication and Firestore
  * Run this once to set up the admin user
  * 
  * IMPORTANT: Change these credentials before deploying to production!
@@ -10,19 +10,56 @@ const bcrypt = require('bcryptjs');
 const initializeAdmin = async () => {
   try {
     const db = getFirestore();
+    const auth = getAuth();
     
     // Admin user configuration
-    // TODO: Update these credentials with your organization's admin details
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@hermonkeerthanalu.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@2025!SecurePass';
+    const adminName = process.env.ADMIN_NAME || 'Administrator';
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
     
+    let firebaseUserId;
+    
+    // Step 1: Create or get user in Firebase Authentication
+    try {
+      // Try to get existing user
+      const existingUser = await auth.getUserByEmail(adminEmail);
+      firebaseUserId = existingUser.uid;
+      
+      // Update password
+      await auth.updateUser(firebaseUserId, {
+        password: adminPassword,
+        displayName: adminName
+      });
+      console.log('✅ Firebase Auth user updated:', firebaseUserId);
+    } catch (error) {
+      if (error.code === 'auth/user-not-found') {
+        // Create new user in Firebase Authentication
+        const userRecord = await auth.createUser({
+          email: adminEmail,
+          password: adminPassword,
+          displayName: adminName,
+          emailVerified: true
+        });
+        firebaseUserId = userRecord.uid;
+        console.log('✅ Firebase Auth user created:', firebaseUserId);
+      } else {
+        throw error;
+      }
+    }
+    
+    // Step 2: Create or update user in Firestore
     const adminData = {
-      email: process.env.ADMIN_EMAIL || 'admin@hermonkeerthanalu.com',
-      displayName: process.env.ADMIN_NAME || 'Administrator',
+      userId: firebaseUserId,
+      email: adminEmail,
+      displayName: adminName,
       role: 'admin',
-      passwordHash: hashedPassword, // Store hashed password
+      passwordHash: hashedPassword,
+      authProvider: 'email',
+      photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(adminName)}&size=200`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
       isActive: true,
       permissions: {
         manageSongs: true,
@@ -36,28 +73,14 @@ const initializeAdmin = async () => {
       }
     };
     
-    // Check if admin already exists
     const usersRef = db.collection('users');
-    const snapshot = await usersRef.where('email', '==', adminData.email).get();
     
-    if (snapshot.empty) {
-      // Create admin user document
-      const adminRef = await usersRef.add(adminData);
-      console.log('✅ Admin user created with ID:', adminRef.id);
-      console.log('   Email:', adminData.email);
-      console.log('   Role:', adminData.role);
-      console.log('   ⚠️  Remember to create this user in Firebase Authentication!');
-    } else {
-      // Update existing admin
-      const docId = snapshot.docs[0].id;
-      await usersRef.doc(docId).update({
-        role: 'admin',
-        passwordHash: hashedPassword, // Update with hashed password
-        permissions: adminData.permissions,
-        updatedAt: new Date().toISOString()
-      });
-      console.log('✅ Admin user updated with ID:', docId);
-    }
+    // Use Firebase UID as document ID
+    await usersRef.doc(firebaseUserId).set(adminData, { merge: true });
+    console.log('✅ Firestore admin document created/updated:', firebaseUserId);
+    console.log('   Email:', adminEmail);
+    console.log('   Role: admin');
+    console.log('   🎉 Admin setup complete!');
     
   } catch (error) {
     console.error('❌ Error initializing admin:', error);

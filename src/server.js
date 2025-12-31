@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 
 const { errorHandler } = require('./middleware/error.middleware');
 const { initializeFirebase } = require('./config/firebase.config');
+const { initializeAdmin } = require('./utils/admin.utils');
 
 // Initialize Firebase BEFORE importing routes
 try {
@@ -15,6 +16,11 @@ try {
   console.error('❌ Firebase initialization failed:', error.message);
   process.exit(1);
 }
+
+// Initialize admin user (async)
+initializeAdmin().catch(err => {
+  console.error('❌ Admin initialization failed:', err);
+});
 
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
