@@ -3,17 +3,20 @@ const { getFirestore } = require('../config/firebase.config');
 /**
  * Initialize admin user in Firestore
  * Run this once to set up the admin user
+ * 
+ * IMPORTANT: Change these credentials before deploying to production!
  */
 const initializeAdmin = async () => {
   try {
     const db = getFirestore();
     
-    // Admin user data from Firebase project
+    // Admin user configuration
+    // TODO: Update these credentials with your organization's admin details
     const adminData = {
-      email: 'gvasu1292@gmail.com',
-      displayName: 'Vasu',
+      email: process.env.ADMIN_EMAIL || 'admin@hermonkeerthanalu.com',
+      displayName: process.env.ADMIN_NAME || 'Administrator',
       role: 'admin',
-      password: 'Vasu@2219', // This should match Firebase Auth password
+      password: process.env.ADMIN_PASSWORD || 'Admin@2025!SecurePass', // CHANGE THIS!
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isActive: true,
@@ -21,8 +24,11 @@ const initializeAdmin = async () => {
         manageSongs: true,
         manageUsers: true,
         managePlaylists: true,
+        manageImages: true,
         viewActivities: true,
-        manageSettings: true
+        manageSettings: true,
+        deleteContent: true,
+        viewStatistics: true
       }
     };
     
@@ -36,6 +42,7 @@ const initializeAdmin = async () => {
       console.log('✅ Admin user created with ID:', adminRef.id);
       console.log('   Email:', adminData.email);
       console.log('   Role:', adminData.role);
+      console.log('   ⚠️  Remember to create this user in Firebase Authentication!');
     } else {
       // Update existing admin
       const docId = snapshot.docs[0].id;
