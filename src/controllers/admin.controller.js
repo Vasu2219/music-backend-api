@@ -141,7 +141,7 @@ exports.updateSong = async (req, res, next) => {
   }
 };
 
-// Soft delete song
+// Delete song (hard delete with cleanup)
 exports.deleteSong = async (req, res, next) => {
   try {
     const { songId } = req.params;
@@ -156,12 +156,25 @@ exports.deleteSong = async (req, res, next) => {
       });
     }
 
-    // Soft delete: set isActive = false
-    await songRef.update({ isActive: false });
+    // Delete song from database
+    await songRef.delete();
+
+    // Remove song from all user activities
+    const activitiesRef = db.collection('activities');
+    const activitiesSnapshot = await activitiesRef.where('songId', '==', songId).get();
+    
+    const batch = db.batch();
+    activitiesSnapshot.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    if (!activitiesSnapshot.empty) {
+      await batch.commit();
+    }
 
     res.status(200).json({
       success: true,
-      message: 'Song deleted successfully'
+      message: 'Song deleted successfully from database and user activities'
     });
   } catch (error) {
     next(error);
