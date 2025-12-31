@@ -1,0 +1,37 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Songs storage - only admins can upload, everyone can read
+    match /songs/{songId} {
+      allow read: if true;  // Public read for song playback
+      allow write: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Profile images - users can upload their own
+    match /profile_images/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Thumbnails - admins can upload
+    match /thumbnails/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}
