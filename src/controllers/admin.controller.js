@@ -1,6 +1,6 @@
 const { getFirestore } = require('../config/firebase.config');
 const { v4: uuidv4 } = require('uuid');
-const cloudinary = require('cloudinary').v2;
+const cloudinary = require('../config/cloudinary.config');
 const streamifier = require('streamifier');
 
 const db = getFirestore();
